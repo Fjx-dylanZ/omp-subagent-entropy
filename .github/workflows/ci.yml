@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Docker check + package install (linux/arm64)
+    # Standard GitHub-hosted arm64 runner for public repositories; the pinned omp binary is linux-arm64.
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build dev image
+        timeout-minutes: 15
+        run: docker compose build dev
+
+      - name: Check (format, typecheck, unit tests, runtime smoke; offline)
+        timeout-minutes: 15
+        run: docker compose run --rm -T dev
+
+      - name: Build clean install image
+        timeout-minutes: 10
+        run: docker build --platform linux/arm64 --target install-smoke --tag omp-subagent-entropy-install .
+
+      - name: Package install smoke (offline)
+        timeout-minutes: 15
+        run: >-
+          docker run --rm --platform linux/arm64 --init --network none
+          --cpus 2 --memory 3g --memory-swap 3g --pids-limit 512
+          --cap-drop ALL --security-opt no-new-privileges:true
+          --tmpfs /home/dev:uid=10001,gid=10001,mode=0700,size=1g,exec
+          --tmpfs /tmp:mode=1777,size=1g,exec
+          --tmpfs /run/user/10001:uid=10001,gid=10001,mode=0700,size=16m
+          omp-subagent-entropy-install

@@ -1,0 +1,35 @@
+# Isolated, offline dev/test environment for omp-subagent-entropy.
+#
+#   docker compose build dev
+#   docker compose run --rm dev                     # bun run check
+#   docker compose run --rm dev omp --version       # ad-hoc omp / bun / bash
+#
+# No ports, bind mounts, volumes, env files, credentials, or docker socket:
+# the image is the only input. Rebuild (or `run --build`) after source edits.
+name: omp-subagent-entropy
+
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+    platform: linux/arm64
+    init: true
+    # Loopback only: fixture model servers on 127.0.0.1 still work.
+    network_mode: none
+    cpus: 2
+    mem_limit: 2g
+    memswap_limit: 2g
+    pids_limit: 512
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # Fresh per container. HOME needs exec: the compiled omp binary extracts
+    # and dlopens its native addon under ~/.omp/natives (~180 MB) at startup.
+    # tmpfs pages count toward mem_limit.
+    tmpfs:
+      - /home/dev:uid=10001,gid=10001,mode=0700,size=1g,exec
+      - /tmp:mode=1777,size=512m,exec
+      - /run/user/10001:uid=10001,gid=10001,mode=0700,size=16m

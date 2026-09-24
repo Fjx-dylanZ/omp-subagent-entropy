@@ -1,0 +1,19 @@
+# Dependencies are installed only inside Docker.
+node_modules/
+
+# Local secrets.
+.env
+.env.*
+.npmrc
+
+# Local omp config/state for this checkout; tests use temp fixtures instead.
+/.omp/
+
+# OS / tooling noise.
+.DS_Store
+*.log
+*.tsbuildinfo
+coverage/
+
+# Release artifacts exported from Docker.
+/dist/

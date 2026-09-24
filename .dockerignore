@@ -1,0 +1,22 @@
+# Default-deny: the build context contains ONLY the allowlisted inputs below.
+# New top-level inputs must be allowlisted here AND copied in the Dockerfile.
+# The `pack` stage copies the whole context; package.json "files" decides what ships.
+*
+!package.json
+!bun.lock
+!tsconfig.json
+!.prettierrc.json
+!src
+!tests
+!README.md
+!CHANGELOG.md
+!LICENSE
+!.github/workflows/ci.yml
+
+# Never send secrets, installed deps, or OS/log noise, even from allowlisted dirs.
+**/.env
+**/.env.*
+**/.npmrc
+**/node_modules
+**/.DS_Store
+**/*.log

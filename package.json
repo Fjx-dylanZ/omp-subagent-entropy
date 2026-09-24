@@ -1,0 +1,56 @@
+{
+  "name": "omp-subagent-entropy",
+  "version": "0.1.0",
+  "description": "Weighted random and round-robin model routing for omp subagents",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "author": {
+    "name": "Dylan Zhang",
+    "url": "https://github.com/Fjx-dylanZ"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Fjx-dylanZ/omp-subagent-entropy.git"
+  },
+  "homepage": "https://github.com/Fjx-dylanZ/omp-subagent-entropy#readme",
+  "bugs": {
+    "url": "https://github.com/Fjx-dylanZ/omp-subagent-entropy/issues"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "omp",
+    "oh-my-pi",
+    "extension",
+    "subagents",
+    "model-routing"
+  ],
+  "omp": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "scripts": {
+    "format": "prettier --write src tests package.json tsconfig.json .prettierrc.json .github/workflows/ci.yml",
+    "format:check": "prettier --check src tests package.json tsconfig.json .prettierrc.json .github/workflows/ci.yml",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test tests/*.test.ts",
+    "smoke": "bun tests/runtime.ts",
+    "smoke:lifecycle": "bun tests/lifecycle.ts",
+    "check": "bun run format:check && bun run typecheck && bun run test && bun run smoke && bun run smoke:lifecycle"
+  },
+  "devDependencies": {
+    "@oh-my-pi/pi-coding-agent": "18.3.0",
+    "@types/bun": "1.3.14",
+    "prettier": "3.9.9",
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "bun": ">=1.4.2"
+  }
+}
