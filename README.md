@@ -2,21 +2,23 @@
 
 Weighted random and weighted round-robin selection for **omp subagent spawns**. Tested with omp **18.3.0**.
 
-omp already supports ordered model lists on agents and model roles. This extension chooses the starting model from those lists instead of always starting with the first candidate. It uses `before_subagent_spawn`; it does not replace the task tool, change the parent's model, or write omp settings.
+omp already supports ordered model lists on agents and model roles. This extension can route those lists or define an explicit project-local agent pool through the TUI, including when the agent is natively pinned to one model. It uses `before_subagent_spawn`; it does not replace the task tool, change the parent's model, or write native omp settings.
 
 ## Install
 
 Requires **omp 18.3.0** and **Bun 1.4.2 or newer** on PATH for omp's plugin installer. Other omp versions are not yet verified.
 
 ```sh
-omp plugin install github:Fjx-dylanZ/omp-subagent-entropy#v0.1.0
+omp plugin install 'github:Fjx-dylanZ/omp-subagent-entropy#v0.2.0'
 ```
 
-Start a new omp session in your work project. Existing sessions do not need to be restarted. Once an agent has a native model pool configured below, open its routing editor:
+Start a new omp session in your work project after installing or updating, then open an agent's editor:
 
 ```text
 /subagent-entropy reviewer
 ```
+
+Choose **Edit model pool**, toggle the models you want with Enter, choose **Done**, set the routing mode/weights, and **Save**. You do not need to edit native YAML first.
 
 There is no extension build step and no runtime npm dependency to install separately. The package contains TypeScript sources and uses the host APIs bundled in omp. No npm publication is required.
 
@@ -28,9 +30,26 @@ omp plugin uninstall omp-subagent-entropy
 
 Installation changes omp's user plugin registry. Routing rules remain project-local and are not removed by uninstalling the plugin.
 
+Existing configurations without `models` keep their v0.1 behavior. Custom pools use the new agent-only `models` field: upgrade/reload sessions that share a project before saving one, because v0.1.0 cannot read that field.
+
 ## Configure a model pool
 
-Keep candidates in native omp configuration. For example, in your project's `.omp/config.yml`:
+### Through the TUI
+
+In `/subagent-entropy reviewer`:
+
+1. Choose **Edit model pool**. This is available even for a single-model native pin.
+2. Use arrow keys and Enter to add/remove models. The picker lists available chat models and keeps current pool members visible, including unavailable selectors and existing thinking suffixes.
+3. Select at least two models, then choose **Done** to return to the editor.
+4. Choose **random** or **round-robin**, adjust weights, then **Save**.
+
+The model pool, mode, and weights are saved together in `.omp/subagent-entropy.json`. Nothing is persisted by toggling a model or choosing Done alone. Picker Cancel keeps the previous draft; main Cancel discards the entire draft.
+
+**Use native model pool** removes the explicit pool when you Save, retaining the mode and weights of retained native members. This can restore a one-model native pin. **Remove agent override** instead deletes the pool, mode, and weights, restoring role/native routing.
+
+### Native configuration (optional)
+
+Without an explicit agent pool, candidates still come from native omp configuration. For example, in your project's `.omp/config.yml`:
 
 ```yaml
 modelRoles:
@@ -69,13 +88,14 @@ For agent routing, use `/subagent-entropy reviewer` to create the rule interacti
 
 This gives each invocation a **75% / 25%** starting-model probability, assuming both candidates are available. Change `mode` to `"round-robin"` for deterministic smooth weighted rotation with the same target proportions. Equal weights produce ordinary round-robin.
 
-For a rule attached directly to an agent instead of its role:
+An explicit project-local agent pool can also be configured by hand:
 
 ```json
 {
   "agents": {
     "reviewer": {
       "mode": "round-robin",
+      "models": ["openai/gpt-5.4", "anthropic/claude-sonnet-4-5"],
       "weights": {
         "openai/gpt-5.4": 3,
         "anthropic/claude-sonnet-4-5": 1
@@ -85,7 +105,9 @@ For a rule attached directly to an agent instead of its role:
 }
 ```
 
-`agents` and `roles` can coexist. An agent-specific rule takes precedence over its role's rule; rules are not merged. Role keys omit `@`.
+`models` is optional and supported only on agent rules. It must contain at least two distinct selector strings, in the desired pool/fallback order. Each entry is one nonempty selector; commas, surrounding whitespace, and control characters are rejected. Omitting it routes the native list instead. When `models` is present, weight keys must belong to that pool.
+
+`agents` and `roles` can coexist. An agent-specific rule takes precedence over its role's rule; rules are not merged. Role keys omit `@`, and role model lists stay in native omp settings.
 
 ## Load a local checkout
 
@@ -113,16 +135,18 @@ Pick an agent, or open one directly:
 /subagent-entropy reviewer
 ```
 
-The editor shows the agent's effective native model list, inherited role policy, and current routing override. Use arrow keys and Enter to:
+The editor shows the native model list, any explicit project pool, inherited role policy, and current routing override. Use arrow keys and Enter to:
 
+- **Edit model pool** to select models without modifying native settings.
+- **Use native model pool** to drop a custom pool on Save.
 - Switch between **random** and **round-robin**.
 - Edit relative weights and see normalized initial-selection percentages immediately.
 - **Save** the agent override, or **Cancel** / Escape to discard the draft.
 - **Remove agent override** to restore the existing role rule or native model order, after confirmation.
 
-For example, weights `3` and `1` display `75.0%` and `25.0%`. Unavailable candidates are marked and excluded from these percentages. Negative/non-finite weights are rejected; saving requires at least one available positive-weight candidate. A zero weight affects the initial pick, not retry fallback.
+For example, weights `3` and `1` display `75.0%` and `25.0%`. Unavailable candidates are marked and excluded from these percentages. Negative/non-finite weights are rejected; saving an active routing pool requires at least one available positive-weight candidate. Restoring a native pin does not require routing weights, because native selection ignores them. A zero weight affects the initial pick, not retry fallback.
 
-**This editor changes agent routing mode and weights, not model-pool membership or role rules.** Define at least two candidate models in native omp configuration first (see above). Single-model pins remain native; an obsolete agent override can still be removed.
+**The editor configures agent pools, routing modes, and weights; role editing remains file-based.** A custom agent pool explicitly overrides the native list, including a single-model pin. Without a custom pool, native pins keep their existing behavior. New models start at weight `1`; retained models keep their weights, and removed models' weights are dropped.
 
 Changes are saved to the project's `.omp/subagent-entropy.json` and apply to **the next spawn in the current session without `/reload`**. Running children keep their models. Saving or removing an override refreshes the current session's routing configuration and resets its round-robin balances. Other sessions retain their cached configuration until reloaded.
 
@@ -132,16 +156,16 @@ Only project-local paths are writable. An active `OMP_SUBAGENT_ENTROPY_CONFIG` p
 
 ## Routing contract
 
-- Only an explicitly configured agent or role with **two or more distinct native candidate patterns** is routed. Missing default configuration, unmatched rules, and single-model pins retain native behavior.
-- Native omp override precedence applies before this hook. A single-model override remains a pin. Role rules match the originating role supplied by omp, not other roles that happen to use the same model.
+- An agent rule's optional `models` list replaces its native candidate list for this extension's selection and per-spawn fallback order. The old native pin is not appended to that pool.
+- Without an explicit pool, native omp override precedence applies and a single-model list remains a pin. Missing default configuration and unmatched rules retain native behavior. Role rules match the originating role supplied by omp, not other roles that happen to use the same model.
 - Weights are finite, nonnegative, relative numbers. `3:1`, `75:25`, and `0.75:0.25` describe the same split. Unspecified candidate weights are `1`; omitting `weights` makes the pool uniform.
-- Weight keys match **exact expanded selector strings**, including any thinking suffix. They are not fuzzy matches or role aliases. An unknown weight key in an active multi-model pool blocks the spawn rather than silently changing the intended probabilities.
+- Weight keys match **exact candidate strings**: entries in an explicit agent pool, or expanded selectors from the native list, including thinking suffixes. They are not fuzzy weight-key matches or role aliases. A weight outside an explicit pool makes that configuration invalid; an unknown weight key for a native pool blocks the matching spawn.
 - Initial selection excludes zero-weight candidates and candidates that `ctx.models.resolve` cannot resolve from the session's available models. Remaining weights are renormalized. Availability is not a provider health check or a guarantee that credentials will refresh successfully.
 - Random selection is independent per invocation; its proportions are statistical, not batch quotas. Round-robin uses smooth weighted allocation, with equal-score ties following native candidate order.
 - Round-robin state is shared by a routing rule within the **parent session**. Agents using the same role rule share its rotation. Agent-specific rules have independent rotations. A changed eligible pool or weights resets that rule's balances. State is not persisted or coordinated across sessions/processes; switching sessions or reloading starts a fresh rotation.
 - Selection and state updates are synchronous. Concurrent dispatches reserve choices in hook execution order, not completion order. A canceled dispatch may consume a rotation slot.
 - Selection occurs once at child creation, not per model request, tool call, or continuation. Workpool follow-up items keep the existing worker; they do not consume another selection.
-- **Weights control only the starting model.** The selected pattern moves to the front; all remaining native patterns keep their original relative order for omp's retry fallback. **A zero-weight model can still be used as a fallback.** Configure omp's retry policy separately if that is not desired.
+- **Weights control only the starting model.** The selected pattern moves to the front; all remaining entries in the effective pool keep their original relative order for omp's retry fallback. **A zero-weight model can still be used as a fallback.** Core retry policies remain separate and can affect subsequent model changes; weights and pool selection are not a provider-access policy.
 - Thinking suffixes remain attached to their selectors. Effort, permissions, output schemas, service tiers, retry rules, and the parent model remain owned by omp.
 - The task UI receives a routing note with the policy, rule, chosen selector, and target share. Core reports the actual serving model separately; retries can make that model differ from the original routing note.
 
@@ -205,12 +229,12 @@ That export writes only `bun.lock`. It does not run a host package manager.
 
 1. Prettier formatting checks and strict TypeScript checking against omp 18.3.0's published types, including unused-symbol checks.
 2. Deterministic unit tests for probability boundaries, normalization, weighted rotation, availability changes, precedence, pins, terminal-safe diagnostics, bounded file reads, and agent-rule persistence (conflicts, unrelated edits, permissions, safe paths, and failed-write cleanup).
-3. Nine integration scenarios against the **real omp binary** using a **test-only loopback OpenAI-compatible protocol fixture**. Assertions inspect actual child provider requests and omp's routing/result metadata, not just returned fixture text.
+3. Integration scenarios against the **real omp binary** using a **test-only loopback OpenAI-compatible protocol fixture**. Assertions inspect actual child provider requests and omp's routing/result metadata, including an explicit pool replacing a native pin across task/eval dispatch and fallback order.
 4. Real RPC session-lifecycle regressions: session-switch/reload rotation resets, stale-draft refusal across same-ID project moves, and terminal-safe command errors.
 
 Integration covers mixed task/eval rotation, concurrent 3:1 routing, agent-versus-role precedence, zero-weight initial exclusion, workpool reuse, real core retry fallback after a fixture 429, malformed/absent configuration, blocked spawns, and unchanged native routing. Child continuations and parent requests are checked for unintended model changes.
 
-Separately, the interactive editor was exercised through keyboard input in a real omp terminal inside Docker: agent selection, mode changes, invalid weight rejection, live 75%/25% display, Save, Cancel, and removal. Actual child provider requests in the same session changed to `A, A, B, A` after saving 3:1 round-robin, then returned to the inherited role policy after removal. This terminal smoke is not part of `bun run check`.
+Separately, the interactive editor was exercised through keyboard input in a real omp terminal inside Docker: starting from one native model, selecting a second, changing weights/mode, saving, and observing `A, A, B, A` from subsequent 3:1 round-robin spawns. The smoke also covered minimum pool size, invalid weights, both cancellation paths, restoring the native pin, and removing an override; native configuration files remained unchanged. This terminal smoke is not part of `bun run check`.
 
 No real provider inference or external credentials are used. These checks verify routing and omp integration, not provider availability or model quality. Live-provider behavior has not been exercised.
 

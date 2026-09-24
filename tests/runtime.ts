@@ -933,6 +933,34 @@ const SCENARIOS: Scenario[] = [
     },
   },
   {
+    name: "explicit-pool",
+    summary: "an agent's project pool replaces its native pin for task/eval and per-spawn fallback",
+    agents: { "pinned-worker": { model: [sel(A)] } },
+    defaultRouting: JSON.stringify({
+      agents: { "pinned-worker": { mode: "round-robin", models: [sel(B), sel(C)] } },
+    }),
+    parent: [
+      task([["pinned-worker", "pool-task-1"]]),
+      evalAgent("pinned-worker", "pool-eval-2"),
+      task([["pinned-worker", "pool-task-3"]]),
+      evalAgent("pinned-worker", "pool-eval-4"),
+    ],
+    childMode: "read-then-yield",
+    verify(run, check) {
+      expectSpawns(
+        run,
+        check,
+        { "pool-task-1": B, "pool-eval-2": C, "pool-task-3": B, "pool-eval-4": C },
+        { continuation: true },
+      );
+      for (const label of ["pool-task-1", "pool-task-3"]) {
+        expectTaskMetadata(run, check, label, { routed: true, served: B, patterns: [B, C] });
+      }
+      expectEvalCompleted(run, check, "pool-eval-2");
+      expectEvalCompleted(run, check, "pool-eval-4");
+    },
+  },
+  {
     name: "precedence",
     summary:
       "agent rule beats role rule; role rule applies alone; random 0/1 always B; unmatched and single-model stay native",

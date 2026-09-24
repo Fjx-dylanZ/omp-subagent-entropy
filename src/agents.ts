@@ -5,7 +5,7 @@ import {
   resolveAgentModelSelection,
 } from "@oh-my-pi/pi-coding-agent/config/model-resolver";
 import { discoverAgents } from "@oh-my-pi/pi-coding-agent/task/discovery";
-import type { AgentPool } from "./editor";
+import type { AgentPool, AvailableModel } from "./editor";
 
 /** Read the spawning session's settings; never use or mutate the global settings singleton. */
 export async function loadAgentPools(ctx: ExtensionCommandContext): Promise<AgentPool[]> {
@@ -36,4 +36,16 @@ export async function loadAgentPools(ctx: ExtensionCommandContext): Promise<Agen
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Models the active session can authenticate and use for chat-based subagents. */
+export function listModelChoices(ctx: ExtensionCommandContext): AvailableModel[] {
+  const choices = new Map<string, AvailableModel>();
+  for (const model of ctx.models.list()) {
+    // Catalog rows without a kind are ordinary chat models.
+    if (model.kind !== undefined && model.kind !== "chat") continue;
+    const selector = formatModelStringWithRouting(model);
+    choices.set(selector, { selector, name: model.name });
+  }
+  return [...choices.values()].sort((a, b) => a.selector.localeCompare(b.selector));
 }

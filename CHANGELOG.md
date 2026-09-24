@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0
+
+- Add **Edit model pool** to `/subagent-entropy [agent]`, including agents currently pinned to a single native model.
+- Select available chat models directly in the TUI, preserve retained weights, and save the pool, mode, and weights atomically in project-local routing configuration.
+- Add **Use native model pool** with a working save path back to a single-model native pin. Both picker and main-editor cancellation leave persisted configuration untouched.
+- Add the optional agent-only `models` field. An explicit pool replaces the native candidate list and per-spawn fallback order; existing configurations without this field keep their previous behavior.
+- Verify explicit pools through real task/eval dispatch, clean-package installation, and actual terminal interaction.
+
 ## 0.1.0
 
 Initial public release.

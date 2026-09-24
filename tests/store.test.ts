@@ -19,6 +19,7 @@ import { readRoutingDocument, RoutingConflictError, saveAgentRule, writeFileAtom
 
 const A = "provider/a:high";
 const B = "provider/b:low";
+const C = "provider/c";
 
 let base: string;
 let project: string;
@@ -33,8 +34,8 @@ beforeEach(() => {
 
 afterEach(() => rmSync(base, { recursive: true, force: true }));
 
-function rule(mode: RoutingMode, weights?: Record<string, number>): RoutingRule {
-  return { mode, weights: weights && new Map(Object.entries(weights)) };
+function rule(mode: RoutingMode, weights?: Record<string, number>, models?: string[]): RoutingRule {
+  return { mode, weights: weights && new Map(Object.entries(weights)), models };
 }
 
 function put(path: string, value: unknown): void {
@@ -151,7 +152,71 @@ describe("saving an agent rule", () => {
     const snapshot = readRoutingDocument(file, false);
     expect(() => saveAgentRule(file, snapshot, "reviewer", rule("random", { [A]: -1 }), project)).toThrow();
     expect(() => saveAgentRule(file, snapshot, " reviewer", rule("random"), project)).toThrow();
+    for (const invalid of [
+      rule("random", undefined, [A]),
+      rule("random", undefined, [A, `${B},${C}`]),
+      rule("random", { [C]: 1 }, [A, B]),
+    ]) {
+      expect(() => saveAgentRule(file, snapshot, "reviewer", invalid, project)).toThrow();
+    }
     expect(readFileSync(file, "utf8")).toBe(text);
+  });
+});
+
+describe("agent model pools", () => {
+  test("round-trip in order, and a rule without models drops the pool while other rules are kept", () => {
+    put(file, { agents: { reviewer: { mode: "random", weights: { [A]: 3 } }, planner }, roles });
+    const pooled = saveAgentRule(
+      file,
+      readRoutingDocument(file, false),
+      "reviewer",
+      rule("round-robin", { [C]: 2 }, [C, A]),
+      project,
+    );
+    expect(onDisk(file)).toEqual({
+      agents: { reviewer: { mode: "round-robin", models: [C, A], weights: { [C]: 2 } }, planner },
+      roles,
+    });
+    expect(pooled.config).toEqual(readRoutingDocument(file, false).config);
+    expect(pooled.config.agents.get("reviewer")?.models).toEqual([C, A]);
+
+    const native = saveAgentRule(file, pooled, "reviewer", rule("round-robin", { [A]: 3 }), project);
+    expect(onDisk(file)).toEqual({
+      agents: { reviewer: { mode: "round-robin", weights: { [A]: 3 } }, planner },
+      roles,
+    });
+    expect(native.config.agents.get("reviewer")?.models).toBeUndefined();
+  });
+
+  test("removing a pooled agent's override removes its pool and keeps other rules", () => {
+    put(file, {
+      agents: { reviewer: { mode: "random", models: [A, B], weights: { [B]: 2 } }, planner },
+      roles,
+    });
+    const removed = saveAgentRule(file, readRoutingDocument(file, false), "reviewer", undefined, project);
+    expect(onDisk(file)).toEqual({ agents: { planner }, roles });
+    expect(removed.config.agents.has("reviewer")).toBe(false);
+  });
+
+  test("pool order is part of the rule: a reorder is saved, and one made elsewhere is a conflict", () => {
+    put(file, { agents: { reviewer: { mode: "random", models: [A, B] } }, roles });
+    const snapshot = readRoutingDocument(file, false);
+    saveAgentRule(file, snapshot, "reviewer", rule("random", undefined, [B, A]), project);
+    expect(onDisk(file)).toEqual({ agents: { reviewer: { mode: "random", models: [B, A] } }, roles });
+
+    const reordered = readFileSync(file, "utf8");
+    const stale = rule("round-robin", undefined, [A, B]);
+    expect(() => saveAgentRule(file, snapshot, "reviewer", stale, project)).toThrow(RoutingConflictError);
+    expect(readFileSync(file, "utf8")).toBe(reordered);
+
+    put(file, { agents: { reviewer: { mode: "random" } } });
+    const unpooled = readRoutingDocument(file, false);
+    put(file, { agents: { reviewer: { mode: "random", models: [A, B] } } });
+    const pooledElsewhere = readFileSync(file, "utf8");
+    expect(() => saveAgentRule(file, unpooled, "reviewer", rule("round-robin"), project)).toThrow(
+      RoutingConflictError,
+    );
+    expect(readFileSync(file, "utf8")).toBe(pooledElsewhere);
   });
 });
 

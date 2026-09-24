@@ -1,7 +1,7 @@
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 import type { RoutingConfig } from "./config";
-import { loadAgentPools } from "./agents";
+import { listModelChoices, loadAgentPools } from "./agents";
 import { editAgentRouting } from "./editor";
 import { ModelRouter } from "./router";
 import { readRoutingDocument, saveAgentRule } from "./store";
@@ -29,7 +29,7 @@ export default function subagentEntropy(pi: ExtensionAPI): void {
   pi.on("session_shutdown", resetSessionRouting);
 
   pi.registerCommand("subagent-entropy", {
-    description: "Configure an agent's model-routing mode and weights (project-local)",
+    description: "Configure an agent's model pool, routing mode, and weights (project-local)",
     handler: async (args, ctx) => {
       if (!ctx.hasUI) {
         ctx.ui.notify("Agent routing configuration requires an interactive UI.", "warning");
@@ -73,6 +73,16 @@ export default function subagentEntropy(pi: ExtensionAPI): void {
         let document = readRoutingDocument(path, !override);
         const pools = await loadAgentPools(ctx);
         assertOwner();
+        const catalog = listModelChoices(ctx);
+        for (const pool of pools) {
+          const explicit = document.config.agents.get(pool.name)?.models;
+          if (explicit) {
+            pool.available = new Set([
+              ...pool.available,
+              ...explicit.filter((pattern) => ctx.models.resolve(pattern) !== undefined),
+            ]);
+          }
+        }
         for (const name of document.config.agents.keys()) {
           if (!pools.some((pool) => pool.name === name)) {
             pools.push({
@@ -87,6 +97,7 @@ export default function subagentEntropy(pi: ExtensionAPI): void {
           ctx.ui,
           pools,
           document.config,
+          catalog,
           async (agent, rule) => {
             assertOwner();
             if (rule) {
@@ -102,9 +113,12 @@ export default function subagentEntropy(pi: ExtensionAPI): void {
                   "This agent's native model list changed while editing. Reopen the editor before saving.",
                 );
               }
+              const patterns = rule.models ?? latest.patterns;
               if (
-                !latest.patterns.some(
-                  (pattern) => (rule.weights?.get(pattern) ?? 1) > 0 && latest.available.has(pattern),
+                patterns.length >= 2 &&
+                !patterns.some(
+                  (pattern) =>
+                    (rule.weights?.get(pattern) ?? 1) > 0 && ctx.models.resolve(pattern) !== undefined,
                 )
               ) {
                 throw new Error(

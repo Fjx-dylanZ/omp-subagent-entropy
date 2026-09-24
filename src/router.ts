@@ -28,16 +28,20 @@ export class ModelRouter {
     const rule = agentRule ?? (spawn.modelRole ? config.roles.get(spawn.modelRole) : undefined);
     if (!rule) return undefined;
 
-    // A native single-model override is a pin, not a pool to route.
-    const patterns = [...new Set(spawn.patterns)];
-    if (patterns.length < 2) return undefined;
+    // An agent's explicit pool replaces the native list, including a native single-model pin, for both
+    // selection and fallback order. Only agent rules may carry one.
+    const explicit = agentRule?.models;
+    const patterns = [...new Set(explicit ?? spawn.patterns)];
+    // Without one, a native single-model override is a pin, not a pool to route.
+    if (!explicit && patterns.length < 2) return undefined;
 
     const ruleKey = agentRule ? `agent:${spawn.agent}` : `role:${spawn.modelRole}`;
     if (rule.weights) {
       for (const selector of rule.weights.keys()) {
         if (!patterns.includes(selector)) {
           throw new Error(
-            `${ruleKey}: weighted selector ${JSON.stringify(selector)} is not in the expanded model list`,
+            `${ruleKey}: weighted selector ${JSON.stringify(selector)} is not in the ` +
+              `${explicit ? "configured" : "expanded"} model list`,
           );
         }
       }

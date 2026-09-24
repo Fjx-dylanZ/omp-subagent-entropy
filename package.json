@@ -1,6 +1,6 @@
 {
   "name": "omp-subagent-entropy",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Weighted random and round-robin model routing for omp subagents",
   "type": "module",
   "private": true,

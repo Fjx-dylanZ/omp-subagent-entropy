@@ -12,7 +12,7 @@
  *   - subagent routing works: tests/runtime.ts scenarios seeded with the installed plugins root.
  * Offline: loopback only, no credentials, no model inference.
  *
- * Usage: bun --no-install tests/install.ts [runtime scenario ...]   (default: round-robin weighted-batch)
+ * Usage: bun --no-install tests/install.ts [runtime scenario ...]   (default: round-robin weighted-batch explicit-pool)
  * Env: OMP_BIN (default /usr/local/bin/omp), ENTROPY_PACKAGE_DIR (default /opt/package: one *.tgz + SHA256SUMS),
  *      ENTROPY_SMOKE_KEEP_TMP=1 keeps temp dirs for debugging.
  */
@@ -24,7 +24,8 @@ import { basename, dirname, join } from "node:path";
 const OMP_BIN = process.env.OMP_BIN || "/usr/local/bin/omp";
 const PACKAGE_DIR = process.env.ENTROPY_PACKAGE_DIR || "/opt/package";
 const KEEP_TMP = process.env.ENTROPY_SMOKE_KEEP_TMP === "1";
-const SCENARIOS = process.argv.length > 2 ? process.argv.slice(2) : ["round-robin", "weighted-batch"];
+const SCENARIOS =
+  process.argv.length > 2 ? process.argv.slice(2) : ["round-robin", "weighted-batch", "explicit-pool"];
 const RUNTIME = join(import.meta.dir, "runtime.ts");
 const COMMAND = "subagent-entropy";
 const PROVIDER = "install-fixture";

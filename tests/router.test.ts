@@ -135,6 +135,71 @@ test("routing annotations cannot inject terminal controls or alter model selecto
   expect(route.model).toEqual([A, B, C]);
 });
 
+describe("explicit agent model pools", () => {
+  const X = "openai/x:high";
+  const Y = "anthropic/y";
+  const Z = "google/z:low";
+
+  test("replace the native list, including a single-model pin, for selection and fallback", () => {
+    const config = parseConfig({ agents: { reviewer: { mode: "round-robin", models: [X, Y] } } });
+    for (const patterns of [[C], [A, B, C], []]) {
+      const router = new ModelRouter();
+      const native = { ...spawn, patterns };
+      const routes = Array.from({ length: 4 }, () => router.route(config, native, available)!.model);
+      expect(routes).toEqual([
+        [X, Y],
+        [Y, X],
+        [X, Y],
+        [Y, X],
+      ]);
+    }
+  });
+
+  test("weights select within the pool and fallback keeps every entry in configured order", () => {
+    const config = parseConfig({
+      agents: { reviewer: { mode: "random", models: [X, Y, Z], weights: { [X]: 3, [Y]: 1, [Z]: 0 } } },
+    });
+    let draw = 0;
+    const router = new ModelRouter(() => draw);
+    const pinned = { ...spawn, patterns: [C] };
+    for (const [sample, expected] of [
+      [0, [X, Y, Z]],
+      [0.749999, [X, Y, Z]],
+      [0.75, [Y, X, Z]],
+      [0.999999, [Y, X, Z]],
+    ] as const) {
+      draw = sample;
+      expect(router.route(config, pinned, available)!.model).toEqual([...expected]);
+    }
+    draw = 0;
+    expect(router.route(config, pinned, (selector) => selector !== X)!.model).toEqual([Y, X, Z]);
+  });
+
+  test("a pool with no available positive-weight model blocks instead of using the native model", () => {
+    const zero = parseConfig({
+      agents: { reviewer: { mode: "random", models: [X, Y], weights: { [X]: 0, [Y]: 0 } } },
+    });
+    const pool = parseConfig({ agents: { reviewer: { mode: "round-robin", models: [X, Y] } } });
+    const pinned = { ...spawn, patterns: [C] };
+    const router = new ModelRouter(() => 0);
+    expect(() => router.route(zero, pinned, available)).toThrow(/positive routing weight/);
+    expect(() => router.route(pool, pinned, (selector) => selector === C)).toThrow(/positive routing weight/);
+  });
+
+  test("an agent's pool does not apply to other agents sharing its role", () => {
+    const config = parseConfig({
+      roles: { review: { mode: "round-robin" } },
+      agents: { reviewer: { mode: "round-robin", models: [X, Y] } },
+    });
+    const router = new ModelRouter();
+    const sibling = { ...spawn, agent: "auditor" };
+    expect(router.route(config, sibling, available)!.model).toEqual([A, B, C]);
+    expect(router.route(config, spawn, available)!.model).toEqual([X, Y]);
+    expect(router.route(config, sibling, available)!.model).toEqual([B, A, C]);
+    expect(router.route(config, { ...sibling, patterns: [C] }, available)).toBeUndefined();
+  });
+});
+
 describe("routing configuration", () => {
   test("rejects invalid probabilities, modes, and ambiguous configuration", () => {
     for (const weight of [-1, Infinity, NaN, "3", null]) {
@@ -151,5 +216,41 @@ describe("routing configuration", () => {
       { agents: { reviewer: { mode: "random", probability: 0.5 } } },
     ])
       expect(() => parseConfig(value)).toThrow();
+  });
+
+  test("keeps an agent model pool verbatim and in configured order", () => {
+    const models = [B, A, "sonnet"];
+    const config = parseConfig({
+      agents: { reviewer: { mode: "random", models, weights: { [A]: 2 } }, planner: { mode: "random" } },
+    });
+    expect(config.agents.get("reviewer")?.models).toEqual(models);
+    expect(config.agents.get("planner")?.models).toBeUndefined();
+  });
+
+  test("rejects malformed model pools, weights outside a pool, and pools on role rules", () => {
+    const agent = (models: unknown, weights?: Record<string, number>) => ({
+      agents: { reviewer: { mode: "random", models, ...(weights && { weights }) } },
+    });
+    for (const models of [
+      `${A},${B}`,
+      { 0: A, 1: B },
+      null,
+      [],
+      [A],
+      [A, A],
+      [A, 3],
+      [A, null],
+      [A, ""],
+      [A, " "],
+      [A, ` ${B}`],
+      [A, `${B}\n`],
+      [A, `${B},${C}`],
+      [A, `provider/\u001b[31mb`],
+      [A, "provider/b\u0085"],
+    ]) {
+      expect(() => parseConfig(agent(models))).toThrow();
+    }
+    expect(() => parseConfig(agent([A, B], { [C]: 1 }))).toThrow();
+    expect(() => parseConfig({ roles: { review: { mode: "random", models: [A, B] } } })).toThrow();
   });
 });

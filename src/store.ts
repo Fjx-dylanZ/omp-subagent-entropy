@@ -96,6 +96,11 @@ export function readRoutingDocument(path: string, allowMissing: boolean): Routin
 function sameRule(a: RoutingRule | undefined, b: RoutingRule | undefined): boolean {
   if (!a || !b) return a === b;
   if (a.mode !== b.mode) return false;
+  // Pool order is the fallback order, so a reordered pool is a different rule.
+  if (a.models || b.models) {
+    if (!a.models || !b.models || a.models.length !== b.models.length) return false;
+    for (let i = 0; i < a.models.length; i++) if (a.models[i] !== b.models[i]) return false;
+  }
   if (!a.weights || !b.weights) return a.weights === b.weights;
   if (a.weights.size !== b.weights.size) return false;
   for (const [selector, weight] of a.weights) {
@@ -228,12 +233,12 @@ export function saveAgentRule(
   const agents = Object.entries((raw.agents ?? {}) as Record<string, unknown>);
   const index = agents.findIndex(([name]) => name === agent);
   if (rule) {
-    const entry: [string, unknown] = [
-      agent,
-      rule.weights ? { mode: rule.mode, weights: Object.fromEntries(rule.weights) } : { mode: rule.mode },
-    ];
-    if (index < 0) agents.push(entry);
-    else agents[index] = entry;
+    // The whole entry is replaced, so a rule without models drops a previously saved pool.
+    const entry: Record<string, unknown> = { mode: rule.mode };
+    if (rule.models) entry.models = [...rule.models];
+    if (rule.weights) entry.weights = Object.fromEntries(rule.weights);
+    if (index < 0) agents.push([agent, entry]);
+    else agents[index] = [agent, entry];
   } else {
     agents.splice(index, 1);
   }
