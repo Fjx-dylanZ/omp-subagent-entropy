@@ -69,12 +69,12 @@ FROM scratch AS package
 COPY --from=pack /pack/ /
 
 # ---------------------------------------------------------------------------
-# omp: checksum-verified omp 18.3.0 + nonroot user + container-local state.
+# omp: checksum-verified omp 18.3.1 + nonroot user + container-local state.
 # Shared runtime of the dev and install-smoke images.
 # ---------------------------------------------------------------------------
 FROM base AS omp
-ADD --checksum=sha256:bdfb9c494e17a2fee1956dae16a010a1953574ce4172c4db8efe06fbe477c637 --chmod=0755 \
-    https://github.com/can1357/oh-my-pi/releases/download/v18.3.0/omp-linux-arm64 /usr/local/bin/omp
+ADD --checksum=sha256:95b9e3dc3c2096885be2c9c923bd45bb3bf81d172367db7e7090936729261e2c --chmod=0755 \
+    https://github.com/can1357/oh-my-pi/releases/download/v18.3.1/omp-linux-arm64 /usr/local/bin/omp
 
 # Dedicated nonroot user with an empty HOME (compose overlays tmpfs on HOME and
 # XDG_RUNTIME_DIR). Smoke-test the binary under a throwaway HOME so no omp

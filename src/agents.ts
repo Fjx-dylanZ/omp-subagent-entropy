@@ -5,6 +5,7 @@ import {
   resolveAgentModelSelection,
 } from "@oh-my-pi/pi-coding-agent/config/model-resolver";
 import { discoverAgents } from "@oh-my-pi/pi-coding-agent/task/discovery";
+import { cfgTaskAgentModelOverrides, cfgTaskDisabledAgents } from "@oh-my-pi/pi-coding-agent/task/settings";
 import type { AgentPool, AvailableModel } from "./editor";
 
 /** Read the spawning session's settings; never use or mutate the global settings singleton. */
@@ -13,8 +14,8 @@ export async function loadAgentPools(ctx: ExtensionCommandContext): Promise<Agen
   if (!settings) throw new Error("The active session's agent settings are unavailable.");
   await settings.reloadFromDisk();
   const { agents } = await discoverAgents(ctx.cwd);
-  const overrides = settings.get("task.agentModelOverrides");
-  const disabled = settings.get("task.disabledAgents");
+  const overrides = cfgTaskAgentModelOverrides.get(settings);
+  const disabled = cfgTaskDisabledAgents.get(settings);
   const current = ctx.models.current();
   const activeModelPattern = current ? formatModelStringWithRouting(current) : undefined;
   return agents

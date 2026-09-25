@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1
+
+- Fix `/subagent-entropy [agent]` failing with `settings.get is not a function` on omp 18.3.1, which replaced string-keyed settings reads with typed setting handles.
+- Require and verify omp **18.3.1**; omp 18.3.0 is no longer supported (use `v0.2.0` there).
+
 ## 0.2.0
 
 - Add **Edit model pool** to `/subagent-entropy [agent]`, including agents currently pinned to a single native model.

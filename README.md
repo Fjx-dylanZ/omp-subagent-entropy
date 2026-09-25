@@ -1,15 +1,15 @@
 # omp-subagent-entropy
 
-Weighted random and weighted round-robin selection for **omp subagent spawns**. Tested with omp **18.3.0**.
+Weighted random and weighted round-robin selection for **omp subagent spawns**. Tested with omp **18.3.1**.
 
 omp already supports ordered model lists on agents and model roles. This extension can route those lists or define an explicit project-local agent pool through the TUI, including when the agent is natively pinned to one model. It uses `before_subagent_spawn`; it does not replace the task tool, change the parent's model, or write native omp settings.
 
 ## Install
 
-Requires **omp 18.3.0** and **Bun 1.4.2 or newer** on PATH for omp's plugin installer. Other omp versions are not yet verified.
+Requires **omp 18.3.1** and **Bun 1.4.2 or newer** on PATH for omp's plugin installer. Other omp versions are not yet verified; for omp 18.3.0 use `v0.2.0`.
 
 ```sh
-omp plugin install 'github:Fjx-dylanZ/omp-subagent-entropy#v0.2.0'
+omp plugin install 'github:Fjx-dylanZ/omp-subagent-entropy#v0.2.1'
 ```
 
 Start a new omp session in your work project after installing or updating, then open an agent's editor:
@@ -183,7 +183,7 @@ If other extensions also return a model from `before_subagent_spawn`, omp uses t
 
 ## Docker development and verification
 
-Requirements: Docker Engine with Linux ARM64 support, Docker Compose, and Buildx. The development image pins Bun **1.4.2** by digest and the omp **18.3.0** Linux ARM64 binary by SHA-256. It does not build the omp monorepo.
+Requirements: Docker Engine with Linux ARM64 support, Docker Compose, and Buildx. The development image pins Bun **1.4.2** by digest and the omp **18.3.1** Linux ARM64 binary by SHA-256. It does not build the omp monorepo.
 
 ```sh
 # Build dependencies and the development image; this step requires network access.
@@ -227,7 +227,7 @@ That export writes only `bun.lock`. It does not run a host package manager.
 
 `bun run check` runs:
 
-1. Prettier formatting checks and strict TypeScript checking against omp 18.3.0's published types, including unused-symbol checks.
+1. Prettier formatting checks and strict TypeScript checking against omp 18.3.1's published types, including unused-symbol checks.
 2. Deterministic unit tests for probability boundaries, normalization, weighted rotation, availability changes, precedence, pins, terminal-safe diagnostics, bounded file reads, and agent-rule persistence (conflicts, unrelated edits, permissions, safe paths, and failed-write cleanup).
 3. Integration scenarios against the **real omp binary** using a **test-only loopback OpenAI-compatible protocol fixture**. Assertions inspect actual child provider requests and omp's routing/result metadata, including an explicit pool replacing a native pin across task/eval dispatch and fallback order.
 4. Real RPC session-lifecycle regressions: session-switch/reload rotation resets, stale-draft refusal across same-ID project moves, and terminal-safe command errors.
@@ -245,7 +245,7 @@ docker compose run --rm dev bun tests/runtime.ts --list
 docker compose run --rm -e ENTROPY_SMOKE_KEEP_TMP=1 dev bun tests/runtime.ts fallback
 ```
 
-`ENTROPY_SMOKE_KEEP_TMP` preserves diagnostic files only inside that container; `--rm` still removes the container afterward. `OMP_BIN` can select another binary already available inside the container; the smoke enforces the tested 18.3.0 version.
+`ENTROPY_SMOKE_KEEP_TMP` preserves diagnostic files only inside that container; `--rm` still removes the container afterward. `OMP_BIN` can select another binary already available inside the container; the smoke enforces the tested 18.3.1 version.
 
 ### Clean package installation
 

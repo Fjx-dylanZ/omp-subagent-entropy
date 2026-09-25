@@ -26,7 +26,7 @@ import { join, resolve } from "node:path";
 import type { Server } from "bun";
 
 const OMP_BIN = process.env.OMP_BIN || "/usr/local/bin/omp";
-const OMP_VERSION = "18.3.0";
+const OMP_VERSION = "18.3.1";
 const EXTENSION = resolve(import.meta.dir, "../src/index.ts");
 const PLUGINS_DIR = process.env.ENTROPY_SMOKE_PLUGINS_DIR
   ? resolve(process.env.ENTROPY_SMOKE_PLUGINS_DIR)
@@ -571,7 +571,7 @@ async function prepareDirs(dir: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 function modelsYaml(baseUrl: string): string {
-  // JSON is valid YAML; models.yml schema: config/models-config-schema-bundle.ts (18.3.0).
+  // JSON is valid YAML; models.yml schema: config/models-config-schema-bundle.ts (18.3.1).
   const models = MODEL_IDS.map((id) => ({
     id,
     name: `Entropy fixture ${id}`,
