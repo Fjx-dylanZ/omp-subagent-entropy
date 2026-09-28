@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.2
+
+- Name positive-weight pool models that were skipped as unavailable in the routing note (for example `100% target share; unavailable: anthropic/claude-opus-5-5`) and in the refusal when no model remains, so a silently shrunken pool is visible in the task UI.
+- Verify compatibility with omp **18.4.0** using real task/eval/workpool dispatch, retry fallback, session-lifecycle checks, and a 24-child random-pool smoke. The reproducible Docker/CI baseline remains pinned to omp **18.3.1**.
+
 ## 0.2.1
 
 - Fix `/subagent-entropy [agent]` failing with `settings.get is not a function` on omp 18.3.1, which replaced string-keyed settings reads with typed setting handles.

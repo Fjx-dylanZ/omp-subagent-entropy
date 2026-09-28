@@ -38,6 +38,20 @@ describe("weighted random selection", () => {
     expect(router.route(config, spawn, (selector) => selector !== A)!.model).toEqual([C, A, B]);
   });
 
+  test("names positive-weight models skipped as unavailable, but not zero-weight ones", () => {
+    const config = parseConfig({
+      agents: { reviewer: { mode: "random", weights: { [A]: 1, [B]: 1, [C]: 0 } } },
+    });
+    const router = new ModelRouter(() => 0);
+    const route = router.route(config, spawn, (selector) => selector !== A)!;
+    expect(route.model).toEqual([B, A, C]);
+    expect(route.note).toContain(A);
+    expect(route.note).not.toContain(C);
+    expect(router.route(config, spawn, available)!.note).not.toContain(B);
+    expect(() => router.route(config, spawn, (selector) => selector === C)).toThrow(A);
+    expect(() => router.route(config, spawn, (selector) => selector === C)).toThrow(B);
+  });
+
   test("large finite weights do not overflow their probability sum", () => {
     const config = parseConfig({
       agents: { reviewer: { mode: "random", weights: { [A]: 1e308, [B]: 1e308, [C]: 0 } } },

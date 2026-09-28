@@ -1,15 +1,15 @@
 # omp-subagent-entropy
 
-Weighted random and weighted round-robin selection for **omp subagent spawns**. Tested with omp **18.3.1**.
+Weighted random and weighted round-robin selection for **omp subagent spawns**. Tested with omp **18.3.1** and **18.4.0**.
 
 omp already supports ordered model lists on agents and model roles. This extension can route those lists or define an explicit project-local agent pool through the TUI, including when the agent is natively pinned to one model. It uses `before_subagent_spawn`; it does not replace the task tool, change the parent's model, or write native omp settings.
 
 ## Install
 
-Requires **omp 18.3.1** and **Bun 1.4.2 or newer** on PATH for omp's plugin installer. Other omp versions are not yet verified; for omp 18.3.0 use `v0.2.0`.
+Verified with **omp 18.3.1 and 18.4.0**. Requires **Bun 1.4.2 or newer** on PATH for omp's plugin installer. Other omp versions are not yet verified; for omp 18.3.0 use `v0.2.0`.
 
 ```sh
-omp plugin install 'github:Fjx-dylanZ/omp-subagent-entropy#v0.2.1'
+omp plugin install 'github:Fjx-dylanZ/omp-subagent-entropy#v0.2.2'
 ```
 
 Start a new omp session in your work project after installing or updating, then open an agent's editor:
@@ -167,7 +167,7 @@ Only project-local paths are writable. An active `OMP_SUBAGENT_ENTROPY_CONFIG` p
 - Selection occurs once at child creation, not per model request, tool call, or continuation. Workpool follow-up items keep the existing worker; they do not consume another selection.
 - **Weights control only the starting model.** The selected pattern moves to the front; all remaining entries in the effective pool keep their original relative order for omp's retry fallback. **A zero-weight model can still be used as a fallback.** Core retry policies remain separate and can affect subsequent model changes; weights and pool selection are not a provider-access policy.
 - Thinking suffixes remain attached to their selectors. Effort, permissions, output schemas, service tiers, retry rules, and the parent model remain owned by omp.
-- The task UI receives a routing note with the policy, rule, chosen selector, and target share. Core reports the actual serving model separately; retries can make that model differ from the original routing note.
+- The task UI receives a routing note with the policy, rule, chosen selector, and target share. When positive-weight pool members were skipped because the session could not resolve them, the note lists them as `unavailable: …`, and so does the refusal when none remain. Core reports the actual serving model separately; retries can make that model differ from the original routing note.
 
 Configuration is loaded lazily at the first spawn in a session and cached. After **manual file edits**, use omp's `/reload` or start a fresh session; saves made through the interactive agent editor apply immediately. To use a different file, set `OMP_SUBAGENT_ENTROPY_CONFIG` to an absolute path or a path relative to the session working directory. An explicitly selected missing file is an error; it does not fall back to the default file.
 
@@ -233,6 +233,8 @@ That export writes only `bun.lock`. It does not run a host package manager.
 4. Real RPC session-lifecycle regressions: session-switch/reload rotation resets, stale-draft refusal across same-ID project moves, and terminal-safe command errors.
 
 Integration covers mixed task/eval rotation, concurrent 3:1 routing, agent-versus-role precedence, zero-weight initial exclusion, workpool reuse, real core retry fallback after a fixture 429, malformed/absent configuration, blocked spawns, and unchanged native routing. Child continuations and parent requests are checked for unintended model changes.
+
+Compatibility was also checked with omp **18.4.0** in isolated Docker containers: all ten runtime scenarios and the RPC lifecycle checks passed for both the current source and an installed v0.2.1 copy loaded through plugin discovery. Separate 24-child random-pool runs used both configured models rather than the native pin, with provider requests matching routing metadata. This was a one-off compatibility check; the committed image, types, and smoke version guard remain pinned to **18.3.1**.
 
 Separately, the interactive editor was exercised through keyboard input in a real omp terminal inside Docker: starting from one native model, selecting a second, changing weights/mode, saving, and observing `A, A, B, A` from subsequent 3:1 round-robin spawns. The smoke also covered minimum pool size, invalid weights, both cancellation paths, restoring the native pin, and removing an override; native configuration files remained unchanged. This terminal smoke is not part of `bun run check`.
 

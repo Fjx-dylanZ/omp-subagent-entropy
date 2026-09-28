@@ -48,16 +48,25 @@ export class ModelRouter {
     }
 
     const candidates: { selector: string; weight: number }[] = [];
+    // Positive-weight models the session cannot resolve are skipped for selection (they stay fallbacks).
+    // Naming them in the note makes a silently shrunken pool visible.
+    const unavailable: string[] = [];
     let maximum = 0;
     for (const selector of patterns) {
       const weight = rule.weights?.get(selector) ?? 1;
-      if (weight > 0 && available(selector)) {
-        candidates.push({ selector, weight });
-        maximum = Math.max(maximum, weight);
+      if (weight <= 0) continue;
+      if (!available(selector)) {
+        unavailable.push(selector);
+        continue;
       }
+      candidates.push({ selector, weight });
+      maximum = Math.max(maximum, weight);
     }
+    const skipped = unavailable.length > 0 ? `unavailable: ${unavailable.join(", ")}` : "";
     if (candidates.length === 0) {
-      throw new Error(`${ruleKey}: no available model has a positive routing weight`);
+      throw new Error(
+        `${ruleKey}: no available model has a positive routing weight${skipped ? ` (${skipped})` : ""}`,
+      );
     }
 
     // Normalize before summing so even large finite relative weights cannot overflow.
@@ -97,7 +106,10 @@ export class ModelRouter {
     return {
       // Weights govern the starting model, not core retry/fallback policy.
       model: [chosen, ...patterns.filter((pattern) => pattern !== chosen)],
-      note: plain(`${rule.mode} ${ruleKey}: ${chosen} (${share}% target share)`, 500),
+      note: plain(
+        `${rule.mode} ${ruleKey}: ${chosen} (${share}% target share${skipped ? `; ${skipped}` : ""})`,
+        500,
+      ),
     };
   }
 }
