@@ -1,7 +1,7 @@
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 import type { RoutingConfig } from "./config";
-import { listModelChoices, loadAgentPools } from "./agents";
+import { listModelChoices, loadAgentPools, usesPerCallModel } from "./agents";
 import { editAgentRouting } from "./editor";
 import { ModelRouter } from "./router";
 import { readRoutingDocument, saveAgentRule } from "./store";
@@ -143,7 +143,7 @@ export default function subagentEntropy(pi: ExtensionAPI): void {
     },
   });
 
-  pi.on("before_subagent_spawn", (event, ctx) => {
+  pi.on("before_subagent_spawn", async (event, ctx) => {
     const override = process.env.OMP_SUBAGENT_ENTROPY_CONFIG;
     const path = resolve(ctx.cwd, override || ".omp/subagent-entropy.json");
     const id = ctx.sessionManager.getSessionId();
@@ -158,13 +158,18 @@ export default function subagentEntropy(pi: ExtensionAPI): void {
 
     // Core treats thrown spawn-hook errors as no override. Explicitly refuse bad routing config.
     if (state.error) return { block: true, reason: plain(`subagent-entropy (${path}): ${state.error}`, 600) };
-    if (!state.config) return;
+    const { config, router } = state;
+    if (!config) return;
+    if (
+      !config.agents.has(event.agent) &&
+      !(event.modelRole !== undefined && config.roles.has(event.modelRole))
+    ) {
+      return;
+    }
     try {
-      return state.router.route(
-        state.config,
-        event,
-        (selector) => ctx.models.resolve(selector) !== undefined,
-      );
+      // A per-call `model` is the caller's explicit choice (usually the user's instruction): leave it to omp.
+      if (await usesPerCallModel(event, ctx)) return;
+      return router.route(config, event, (selector) => ctx.models.resolve(selector) !== undefined);
     } catch (error) {
       return {
         block: true,

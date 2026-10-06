@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+- Leave spawns that carry a per-call `model` (task items, eval `agent()`, `workpool()`; omp 18.5.0+) to omp: no pool, weights, or refusal is applied, and the round-robin rotation does not advance. Previously an agent pool replaced the requested model, and a weighted rule could refuse the spawn. omp does not report where a spawn's models came from, so a request identical to the agent's configured models is still routed.
+- Verify compatibility with omp **18.6.1**; the Docker/CI baseline and type package now pin 18.6.1. omp 18.3.1 and 18.4.0 still pass every integration scenario that does not need per-call models.
+- Rewrite the README as a shorter reference.
+
 ## 0.2.2
 
 - Name positive-weight pool models that were skipped as unavailable in the routing note (for example `100% target share; unavailable: anthropic/claude-opus-5-5`) and in the refusal when no model remains, so a silently shrunken pool is visible in the task UI.

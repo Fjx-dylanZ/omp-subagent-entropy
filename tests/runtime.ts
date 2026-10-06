@@ -26,7 +26,7 @@ import { join, resolve } from "node:path";
 import type { Server } from "bun";
 
 const OMP_BIN = process.env.OMP_BIN || "/usr/local/bin/omp";
-const OMP_VERSION = "18.3.1";
+const OMP_VERSION = "18.6.1";
 const EXTENSION = resolve(import.meta.dir, "../src/index.ts");
 const PLUGINS_DIR = process.env.ENTROPY_SMOKE_PLUGINS_DIR
   ? resolve(process.env.ENTROPY_SMOKE_PLUGINS_DIR)
@@ -56,7 +56,8 @@ type Json = Record<string, unknown>;
 type ChildMode = "read-then-yield" | "yield-first";
 
 interface AgentSpec {
-  model: string | string[];
+  /** Omitted: the agent inherits the parent's model. */
+  model?: string | string[];
   tools?: string[];
 }
 
@@ -571,7 +572,7 @@ async function prepareDirs(dir: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 function modelsYaml(baseUrl: string): string {
-  // JSON is valid YAML; models.yml schema: config/models-config-schema-bundle.ts (18.3.1).
+  // JSON is valid YAML; models.yml schema: config/models-config-schema-bundle.ts (18.6.1).
   const models = MODEL_IDS.map((id) => ({
     id,
     name: `Entropy fixture ${id}`,
@@ -607,12 +608,19 @@ function configYaml(scenario: Scenario): string {
 const assignment = (label: string): string =>
   `ENTROPY-CHILD[${label}] Read smoke.txt, then submit your result with the yield tool.`;
 
-function task(items: ReadonlyArray<readonly [agent: string, label: string]>): ParentCall {
+/** Each item may carry a per-call `model`, which takes precedence over the agent's configured models. */
+function task(
+  items: ReadonlyArray<readonly [agent: string, label: string, model?: string | readonly string[]]>,
+): ParentCall {
   return {
     tool: "task",
     args: {
       context: "Entropy routing runtime smoke. Follow the assignment exactly.",
-      tasks: items.map(([agent, label]) => ({ agent, task: assignment(label) })),
+      tasks: items.map(([agent, label, model]) => ({
+        agent,
+        task: assignment(label),
+        ...(model === undefined ? {} : { model }),
+      })),
     },
   };
 }
@@ -623,9 +631,10 @@ function evalCell(title: string, lines: string[]): ParentCall {
   return { tool: "eval", args: { language: "js", title, timeout: 150, code } };
 }
 
-function evalAgent(agent: string, label: string): ParentCall {
+function evalAgent(agent: string, label: string, model?: string): ParentCall {
+  const options = model === undefined ? { agent } : { agent, model };
   return evalCell(`agent() ${label}`, [
-    `const text = await agent(${fmt(assignment(label))}, { agent: ${fmt(agent)} }).wait();`,
+    `const text = await agent(${fmt(assignment(label))}, ${fmt(options)}).wait();`,
     `display({ label: ${fmt(label)}, completed: typeof text === "string" });`,
   ]);
 }
@@ -961,6 +970,100 @@ const SCENARIOS: Scenario[] = [
     },
   },
   {
+    name: "configured-sources",
+    summary:
+      "a settings agentModelOverrides list and an inherited parent model are configured sources and still route",
+    agents: {
+      overridden: { model: [sel(C)] },
+      inheritor: {},
+    },
+    settings: { task: { agentModelOverrides: { overridden: PAIR } } },
+    defaultRouting: JSON.stringify({
+      agents: {
+        overridden: { mode: "random", weights: { [sel(A)]: 0, [sel(B)]: 1 } },
+        inheritor: { mode: "round-robin", models: [sel(B), sel(C)] },
+      },
+    }),
+    parent: [
+      task([["overridden", "src-override"]]),
+      task([["inheritor", "src-inherit-1"]]),
+      evalAgent("inheritor", "src-inherit-2"),
+    ],
+    childMode: "read-then-yield",
+    verify(run, check) {
+      // Native first choices would be A (override) and the parent model (inherit): every expectation differs.
+      expectSpawns(
+        run,
+        check,
+        { "src-override": B, "src-inherit-1": B, "src-inherit-2": C },
+        { continuation: true },
+      );
+      expectTaskMetadata(run, check, "src-override", { routed: true, served: B, patterns: front(B, [A, B]) });
+      expectTaskMetadata(run, check, "src-inherit-1", { routed: true, served: B, patterns: [B, C] });
+      expectEvalCompleted(run, check, "src-inherit-2");
+    },
+  },
+  {
+    name: "per-call-model",
+    summary:
+      "a per-call model on task items, eval agent(), and workpool() bypasses pools, weights, and blocks without consuming rotation",
+    agents: {
+      "pinned-worker": { model: [sel(A)] },
+      "zero-one": { model: PAIR },
+      inheritor: {},
+    },
+    defaultRouting: JSON.stringify({
+      agents: {
+        "pinned-worker": { mode: "round-robin", models: [sel(B), sel(C)] },
+        "zero-one": { mode: "random", weights: { [sel(A)]: 0, [sel(B)]: 1 } },
+        inheritor: { mode: "round-robin", models: [sel(B), sel(C)] },
+      },
+    }),
+    parent: [
+      task([["pinned-worker", "call-pool", sel(C)]]),
+      evalAgent("pinned-worker", "call-eval", sel(C)),
+      evalCell("workpool() per-call model", [
+        `const pool = await workpool("pinned-worker", { name: "entropy-call-pool", model: ${fmt(sel(C))} });`,
+        `await pool.push(${fmt(assignment("call-workpool"))});`,
+        `const deadline = Date.now() + 120000;`,
+        `let status = await pool.status();`,
+        `while (status.items.completed + status.items.failed + status.items.cancelled < 1) {`,
+        `  if (Date.now() > deadline) throw new Error("workpool did not drain: " + JSON.stringify(status));`,
+        `  await Bun.sleep(100);`,
+        `  status = await pool.status();`,
+        `}`,
+        `display({ label: "call-workpool", completed: status.items.completed === 1 });`,
+      ]),
+      // B is weighted but not requested: routing this list would refuse the spawn.
+      task([["zero-one", "call-weights", [sel(C), sel(A)]]]),
+      task([["inheritor", "call-inherit", sel(A)]]),
+      task([["pinned-worker", "call-routed"]]),
+    ],
+    childMode: "read-then-yield",
+    verify(run, check) {
+      expectSpawns(
+        run,
+        check,
+        {
+          "call-pool": C,
+          "call-eval": C,
+          "call-workpool": C,
+          "call-weights": C,
+          "call-inherit": A,
+          "call-routed": B,
+        },
+        { continuation: true },
+      );
+      expectTaskMetadata(run, check, "call-pool", { routed: false, served: C, patterns: [C] });
+      expectEvalCompleted(run, check, "call-eval");
+      expectEvalCompleted(run, check, "call-workpool");
+      expectTaskMetadata(run, check, "call-weights", { routed: false, served: C, patterns: [C, A] });
+      expectTaskMetadata(run, check, "call-inherit", { routed: false, served: A, patterns: [A] });
+      // The pool's first round-robin slot: bypassed spawns did not advance the rotation.
+      expectTaskMetadata(run, check, "call-routed", { routed: true, served: B, patterns: [B, C] });
+    },
+  },
+  {
     name: "precedence",
     summary:
       "agent rule beats role rule; role rule applies alone; random 0/1 always B; unmatched and single-model stay native",
@@ -1263,7 +1366,7 @@ async function runScenario(root: string, scenario: Scenario): Promise<boolean> {
         "---",
         `name: ${name}`,
         `description: ${fmt(`Entropy runtime smoke agent ${name}`)}`,
-        `model: ${fmt(spec.model)}`,
+        ...(spec.model === undefined ? [] : [`model: ${fmt(spec.model)}`]),
         `tools: ${fmt(spec.tools ?? ["read"])}`,
         "---",
         "You are a deterministic smoke-test worker. Follow the assignment exactly.",
